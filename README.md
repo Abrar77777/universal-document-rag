@@ -176,6 +176,26 @@ GitHub Pages hosts the static project presentation in `docs/index.html`.
 
 Important: GitHub Pages cannot run FastAPI or Streamlit. Use Pages as the portfolio landing page, and run the actual app locally with `run_app.ps1` or deploy the backend/frontend later to Render, Railway, Hugging Face Spaces, or Streamlit Community Cloud.
 
+## Free Cloud Deployment
+
+The easiest free deployment is Streamlit Community Cloud.
+
+Use these settings:
+
+```text
+Repository: Abrar77777/universal-document-rag
+Branch: main
+Main file path: streamlit_app.py
+```
+
+Add this secret in Streamlit Cloud:
+
+```toml
+GROQ_API_KEY = "your_groq_key_here"
+```
+
+The cloud app uses `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The local demo still supports the FastAPI + Streamlit split through `run_app.ps1`.
+
 ## Portfolio Talking Points
 
 - Explain why chunk size and overlap matter for retrieval recall.
