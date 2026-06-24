@@ -5,6 +5,7 @@ __pycache__/
 # Virtual environment
 venv/
 venv2/
+.venv/
 
 # Environment variables
 .env
@@ -12,6 +13,7 @@ venv2/
 # Data artifacts
 data/uploads/
 data/indices/
+logs/
 
 # OS files
 .DS_Store

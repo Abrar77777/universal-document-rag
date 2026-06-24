@@ -1,0 +1,6 @@
+[
+  {
+    "question": "What is the document mainly about?",
+    "expected_sources": ["company_policy.pdf"]
+  }
+]

@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+streamlit
+requests
+pydantic
+python-dotenv
+openai
+duckduckgo-search
+pypdf
+python-docx
+pandas
+openpyxl
+sentence-transformers
+faiss-cpu
+numpy

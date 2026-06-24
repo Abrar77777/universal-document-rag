@@ -1,4 +1,6 @@
 import os
+from typing import Any
+
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -41,16 +43,52 @@ class RAGPipeline:
             score += 0.1
         return round(min(score, 1.0), 2)
 
-    def answer(self, question: str, session_id: str, use_web: bool):
-        retrieved = self.retriever.search(question, top_k=5)
+    def _fallback_answer(self, question: str, doc_context: str, analytics_context: str):
+        if not doc_context and not analytics_context:
+            return (
+                "I do not have enough document context yet. Upload a PDF, DOCX, TXT, CSV, "
+                "or Excel file, then ask again."
+            )
+        context = "\n".join([doc_context, analytics_context]).strip()
+        return (
+            "Based on the retrieved context, here are the most relevant details:\n\n"
+            f"{context[:1400]}\n\n"
+            "Set GROQ_API_KEY in your environment to enable a fully generated analytical answer."
+        )
+
+    def _build_analytics_context(self, analytics_profiles: list[dict[str, Any]] | None):
+        if not analytics_profiles:
+            return ""
+        lines = []
+        for profile in analytics_profiles:
+            if profile.get("summary_text"):
+                lines.append(f"Numeric profile for {profile.get('file', 'uploaded file')}:\n{profile['summary_text']}")
+            for sheet in profile.get("sheets", []):
+                for col, stats in sheet.get("numeric_summary", {}).items():
+                    lines.append(
+                        f"{sheet['name']}.{col}: min={stats.get('min')}, max={stats.get('max')}, "
+                        f"mean={stats.get('mean')}, median={stats.get('median')}."
+                    )
+        return "\n".join(lines)
+
+    def answer(
+        self,
+        question: str,
+        session_id: str,
+        use_web: bool,
+        top_k: int = 5,
+        analytics_profiles: list[dict[str, Any]] | None = None,
+    ):
+        retrieved = self.retriever.search(question, top_k=top_k)
 
         doc_context = "\n\n".join([r["text"] for r in retrieved])
         citations = [
-            f'{r["source"]} (chunk {r["chunk_id"]})'
+            f'{r["source"]} (chunk {r["chunk_id"]}, score {r.get("score", 0)})'
             for r in retrieved
         ]
 
         web_context = web_search(question) if use_web else ""
+        analytics_context = self._build_analytics_context(analytics_profiles)
 
         history = self._get_history(session_id)
 
@@ -58,9 +96,9 @@ class RAGPipeline:
             {
                 "role": "system",
                 "content": (
-                    "You are an airline recovery analyst. "
-                    "Use document context first. "
-                    "Be concise, analytical, and factual."
+                    "You are an intelligent multi-document RAG analyst. Use retrieved document "
+                    "context first, cite sources naturally, and be honest when context is weak. "
+                    "When numeric profiles are available, explain trends, outliers, and business meaning."
                 )
             },
             *history,
@@ -69,6 +107,9 @@ class RAGPipeline:
                 "content": f"""
 DOCUMENT CONTEXT:
 {doc_context}
+
+NUMERIC DATA PROFILE:
+{analytics_context}
 
 WEB CONTEXT:
 {web_context}
@@ -79,13 +120,20 @@ QUESTION:
             }
         ]
 
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages,
-            temperature=0.3
-        )
-
-        answer = response.choices[0].message.content
+        llm_error = None
+        if os.getenv("GROQ_API_KEY"):
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=messages,
+                    temperature=0.25
+                )
+                answer = response.choices[0].message.content
+            except Exception as exc:
+                llm_error = str(exc)
+                answer = self._fallback_answer(question, doc_context, analytics_context)
+        else:
+            answer = self._fallback_answer(question, doc_context, analytics_context)
 
         # update history
         self._update_history(session_id, "user", question)
@@ -93,9 +141,16 @@ QUESTION:
 
         return {
             "answer": answer,
-            "citations": list(set(citations)),
+            "citations": list(dict.fromkeys(citations)),
+            "retrieved_chunks": retrieved,
             "web_used": use_web,
-            "confidence": self._confidence_score(retrieved, use_web)
+            "confidence": self._confidence_score(retrieved, use_web),
+            "llm_error": llm_error,
+            "chart_specs": [
+                chart
+                for profile in (analytics_profiles or [])
+                for chart in profile.get("chart_specs", [])
+            ],
         }
 
 
