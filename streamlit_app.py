@@ -17,6 +17,15 @@ def configure_secrets():
             os.environ[key] = str(value)
 
 
+def reset_workspace():
+    st.session_state.session_id = str(uuid.uuid4())
+    st.session_state.analytics = []
+    st.session_state.uploaded_names = set()
+    st.session_state.index_dirs = []
+    st.session_state.text_analytics = []
+    st.session_state.last_answer = None
+
+
 def upload_direct(file_obj):
     from embeddings.build_index_from_file import build_index
     from utils.file_loader import load_file
@@ -202,11 +211,21 @@ if "index_dirs" not in st.session_state:
     st.session_state.index_dirs = []
 if "text_analytics" not in st.session_state:
     st.session_state.text_analytics = []
+if "last_answer" not in st.session_state:
+    st.session_state.last_answer = None
 
 with st.sidebar:
     st.subheader("Retrieval settings")
     top_k = st.slider("Top K chunks", min_value=1, max_value=10, value=5)
     use_web = st.toggle("Use web search fallback", value=False)
+    combine_files = st.toggle(
+        "Combine multiple uploads",
+        value=False,
+        help="Turn this on only when you want questions to search across all uploaded files together.",
+    )
+    if st.button("Clear current analysis"):
+        reset_workspace()
+        st.rerun()
     st.caption(f"Groq key: {'detected' if os.getenv('GROQ_API_KEY') else 'missing'}")
     st.caption("Mode: Streamlit Cloud direct mode")
     st.caption(f"Session: {st.session_state.session_id[:8]}")
@@ -215,7 +234,10 @@ left, right = st.columns([0.38, 0.62])
 
 with left:
     st.subheader("Upload knowledge")
-    st.caption("Upload documents, spreadsheets, or thousands of feedback replies. The app will index content, analyze sentiment/themes, and profile data.")
+    st.caption(
+        "Upload documents, spreadsheets, or thousands of feedback replies. "
+        "By default, each new upload starts a fresh analysis so old chunks do not pollute new answers."
+    )
     uploaded_files = st.file_uploader(
         "PDF, DOCX, TXT, CSV, Excel, JSON",
         type=["pdf", "txt", "md", "docx", "csv", "xlsx", "xls", "json"],
@@ -223,6 +245,16 @@ with left:
     )
 
     if uploaded_files:
+        new_upload_keys = {f"{file_obj.name}:{file_obj.size}" for file_obj in uploaded_files}
+        should_start_fresh = (
+            not combine_files
+            and new_upload_keys
+            and new_upload_keys != st.session_state.uploaded_names
+        )
+        if should_start_fresh:
+            reset_workspace()
+            st.info("Started a fresh analysis workspace for the newly uploaded file.")
+
         for file_obj in uploaded_files:
             upload_key = f"{file_obj.name}:{file_obj.size}"
             if upload_key in st.session_state.uploaded_names:
@@ -259,6 +291,7 @@ with right:
                         use_web=use_web,
                         top_k=top_k,
                     )
+                st.session_state.last_answer = data
                 render_answer(data)
             except Exception as exc:
                 st.error(f"Question answering failed: {exc}")
