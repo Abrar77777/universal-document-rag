@@ -9,11 +9,6 @@ from rag.web_search import web_search
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1"
-)
-
 # -----------------------------
 # In-memory chat history store
 # -----------------------------
@@ -51,9 +46,9 @@ class RAGPipeline:
             )
         context = "\n".join([doc_context, analytics_context]).strip()
         return (
-            "Based on the retrieved context, here are the most relevant details:\n\n"
-            f"{context[:1400]}\n\n"
-            "Set GROQ_API_KEY in your environment to enable a fully generated analytical answer."
+            "1. I found relevant evidence in the uploaded content.\n"
+            f"2. Key retrieved context: {context[:900]}\n"
+            "3. Add `GROQ_API_KEY` in Streamlit secrets to enable a richer generated answer."
         )
 
     def _build_analytics_context(self, analytics_profiles: list[dict[str, Any]] | None):
@@ -98,7 +93,9 @@ class RAGPipeline:
                 "content": (
                     "You are an intelligent multi-document RAG analyst. Use retrieved document "
                     "context first, cite sources naturally, and be honest when context is weak. "
-                    "When numeric profiles are available, explain trends, outliers, and business meaning."
+                    "When numeric profiles are available, explain trends, outliers, and business meaning. "
+                    "Format every answer line by line with short numbered points. Include: direct answer, "
+                    "evidence, reasoning, risks or caveats, and suggested next action. Do not write a wall of text."
                 )
             },
             *history,
@@ -121,8 +118,13 @@ QUESTION:
         ]
 
         llm_error = None
-        if os.getenv("GROQ_API_KEY"):
+        api_key = os.getenv("GROQ_API_KEY")
+        if api_key:
             try:
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
                 response = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=messages,

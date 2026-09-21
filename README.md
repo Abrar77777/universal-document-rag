@@ -14,6 +14,8 @@ This is built as a portfolio-ready project with a FastAPI backend, Streamlit fro
 - Local fallback answer mode when `GROQ_API_KEY` is not configured.
 - Optional internet search fallback using DuckDuckGo.
 - Numeric profiling for CSV and Excel: rows, columns, missing values, summary statistics, and chart suggestions.
+- Customer feedback analytics: sentiment distribution, keyword extraction, themes, emotion signals, pain points, and praise.
+- Exploratory data analysis for spreadsheets: missing values, category distributions, correlations, outliers, histograms, bar charts, line charts, and scatter plots.
 - Streamlit frontend for upload, question answering, citations, confidence, and charts.
 - Evaluation script for precision@k, recall@k, MRR, and grounding proxy.
 - No paid vector database or proprietary storage required.
@@ -196,6 +198,8 @@ GROQ_API_KEY = "your_groq_key_here"
 ```
 
 The cloud app uses `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The local demo still supports the FastAPI + Streamlit split through `run_app.ps1`.
+
+After saving secrets, reboot the Streamlit app. The sidebar should show `Groq key: detected`. If it says `missing`, the secret was not saved in TOML format or the app has not restarted.
 
 ## Portfolio Talking Points
 
