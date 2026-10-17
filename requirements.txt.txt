@@ -6,6 +6,7 @@ requests
 pydantic
 python-dotenv
 openai
+google-genai
 duckduckgo-search
 pypdf
 python-docx

@@ -194,12 +194,20 @@ Main file path: streamlit_app.py
 Add this secret in Streamlit Cloud:
 
 ```toml
-GROQ_API_KEY = "your_groq_key_here"
+GEMINI_API_KEY = "your_gemini_key_here"
+GEMINI_MODEL = "gemini-2.0-flash"
 ```
 
 The cloud app uses `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The local demo still supports the FastAPI + Streamlit split through `run_app.ps1`.
 
-After saving secrets, reboot the Streamlit app. The sidebar should show `Groq key: detected`. If it says `missing`, the secret was not saved in TOML format or the app has not restarted.
+After saving secrets, reboot the Streamlit app. The sidebar should show `Gemini key: detected`. If it says `missing`, the secret was not saved in TOML format or the app has not restarted.
+
+You can also keep Groq as an optional fallback:
+
+```toml
+GROQ_API_KEY = "your_groq_key_here"
+GROQ_MODEL = "llama-3.1-8b-instant"
+```
 
 ## Portfolio Talking Points
 

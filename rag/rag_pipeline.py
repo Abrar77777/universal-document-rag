@@ -66,6 +66,45 @@ class RAGPipeline:
                     )
         return "\n".join(lines)
 
+    def _messages_to_prompt(self, messages: list[dict[str, str]]) -> str:
+        parts = []
+        for message in messages:
+            role = message.get("role", "user").upper()
+            content = message.get("content", "")
+            parts.append(f"{role}:\n{content}")
+        return "\n\n".join(parts)
+
+    def _generate_with_gemini(self, messages: list[dict[str, str]]) -> str:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        response = client.models.generate_content(
+            model=model,
+            contents=self._messages_to_prompt(messages),
+            config=types.GenerateContentConfig(
+                temperature=0.25,
+                system_instruction=(
+                    "Answer as a senior document intelligence analyst. "
+                    "Use numbered, line-by-line points. Be concise, grounded, and useful."
+                ),
+            ),
+        )
+        return response.text or ""
+
+    def _generate_with_groq(self, messages: list[dict[str, str]]) -> str:
+        client = OpenAI(
+            api_key=os.getenv("GROQ_API_KEY"),
+            base_url="https://api.groq.com/openai/v1"
+        )
+        response = client.chat.completions.create(
+            model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            messages=messages,
+            temperature=0.25
+        )
+        return response.choices[0].message.content or ""
+
     def answer(
         self,
         question: str,
@@ -118,23 +157,25 @@ QUESTION:
         ]
 
         llm_error = None
-        api_key = os.getenv("GROQ_API_KEY")
-        if api_key:
+        provider = "fallback"
+        if os.getenv("GEMINI_API_KEY"):
             try:
-                client = OpenAI(
-                    api_key=api_key,
-                    base_url="https://api.groq.com/openai/v1"
-                )
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.25
-                )
-                answer = response.choices[0].message.content
+                answer = self._generate_with_gemini(messages)
+                provider = "gemini"
             except Exception as exc:
-                llm_error = str(exc)
-                answer = self._fallback_answer(question, doc_context, analytics_context)
+                llm_error = f"Gemini failed: {exc}"
+                answer = ""
+        elif os.getenv("GROQ_API_KEY"):
+            try:
+                answer = self._generate_with_groq(messages)
+                provider = "groq"
+            except Exception as exc:
+                llm_error = f"Groq failed: {exc}"
+                answer = ""
         else:
+            answer = ""
+
+        if not answer:
             answer = self._fallback_answer(question, doc_context, analytics_context)
 
         # update history
@@ -148,6 +189,7 @@ QUESTION:
             "web_used": use_web,
             "confidence": self._confidence_score(retrieved, use_web),
             "llm_error": llm_error,
+            "llm_provider": provider,
             "chart_specs": [
                 chart
                 for profile in (analytics_profiles or [])
