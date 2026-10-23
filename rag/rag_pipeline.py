@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Any
 
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ load_dotenv()
 # -----------------------------
 CHAT_HISTORY = {}
 MAX_HISTORY = 6  # last 3 user-assistant pairs
+logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
@@ -48,7 +50,7 @@ class RAGPipeline:
         return (
             "1. I found relevant evidence in the uploaded content.\n"
             f"2. Key retrieved context: {context[:900]}\n"
-            "3. Add `GROQ_API_KEY` in Streamlit secrets to enable a richer generated answer."
+            "3. AI-generated analysis is temporarily unavailable; use the cited source excerpts below."
         )
 
     def _build_analytics_context(self, analytics_profiles: list[dict[str, Any]] | None):
@@ -79,7 +81,7 @@ class RAGPipeline:
         from google.genai import types
 
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
         response = client.models.generate_content(
             model=model,
             contents=self._messages_to_prompt(messages),
@@ -156,24 +158,27 @@ QUESTION:
             }
         ]
 
-        llm_error = None
-        provider = "fallback"
+        llm_error = False
+        provider = "retrieved sources"
+        answer = ""
+        providers = []
         if os.getenv("GEMINI_API_KEY"):
+            providers.append(("gemini", self._generate_with_gemini))
+        if os.getenv("GROQ_API_KEY"):
+            providers.append(("groq", self._generate_with_groq))
+
+        for provider_name, generate in providers:
             try:
-                answer = self._generate_with_gemini(messages)
-                provider = "gemini"
+                answer = generate(messages)
+                if answer.strip():
+                    provider = provider_name
+                    break
+                logger.warning("The %s provider returned an empty response.", provider_name)
             except Exception as exc:
-                llm_error = f"Gemini failed: {exc}"
-                answer = ""
-        elif os.getenv("GROQ_API_KEY"):
-            try:
-                answer = self._generate_with_groq(messages)
-                provider = "groq"
-            except Exception as exc:
-                llm_error = f"Groq failed: {exc}"
-                answer = ""
-        else:
-            answer = ""
+                logger.warning("The %s provider failed (%s).", provider_name, type(exc).__name__)
+
+        if not answer.strip() and providers:
+            llm_error = True
 
         if not answer:
             answer = self._fallback_answer(question, doc_context, analytics_context)

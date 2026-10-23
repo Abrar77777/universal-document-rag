@@ -195,12 +195,12 @@ Add this secret in Streamlit Cloud:
 
 ```toml
 GEMINI_API_KEY = "your_gemini_key_here"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.8-flash"
 ```
 
 The cloud app uses `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The local demo still supports the FastAPI + Streamlit split through `run_app.ps1`.
 
-After saving secrets, reboot the Streamlit app. The sidebar should show `Gemini key: detected`. If it says `missing`, the secret was not saved in TOML format or the app has not restarted.
+After saving secrets, reboot the Streamlit app. If you explicitly set `GEMINI_MODEL`, make sure it matches the current supported model shown above.
 
 You can also keep Groq as an optional fallback:
 

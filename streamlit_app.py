@@ -174,10 +174,11 @@ def render_answer(data: dict):
     metric_cols[0].metric("Confidence", data.get("confidence", 0))
     metric_cols[1].metric("Chunks used", len(data.get("retrieved_chunks", [])))
     metric_cols[2].metric("Web used", "Yes" if data.get("web_used") else "No")
-    st.caption(f"LLM provider: {data.get('llm_provider', 'fallback')}")
+    provider = data.get("llm_provider", "retrieved sources")
+    st.caption(f"Answer source: {provider.title()}")
 
     if data.get("llm_error"):
-        st.warning("LLM generation failed, so the app returned a retrieved-context fallback answer.")
+        st.warning("AI answer generation is temporarily unavailable. Relevant source excerpts are shown below.")
 
     with st.expander("Sources and retrieved chunks", expanded=True):
         for chunk in data.get("retrieved_chunks", []):
