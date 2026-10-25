@@ -9,6 +9,9 @@ venv2/
 
 # Environment variables
 .env
+.streamlit/secrets.toml
+.pytest_cache/
+evaluation/results*.json
 
 # Data artifacts
 data/uploads/

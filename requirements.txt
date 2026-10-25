@@ -16,3 +16,5 @@ sentence-transformers
 faiss-cpu
 numpy
 scikit-learn
+vaderSentiment>=3.3.2,<4
+xlrd>=2,<3

@@ -8,7 +8,7 @@ def web_search(query: str, max_results: int = 5) -> str:
             results = ddgs.text(query, max_results=max_results)
 
             for r in results:
-                results_text.append(r.get("body", ""))
+                results_text.append(f"{r.get('title', '')}\n{r.get('href', '')}\n{r.get('body', '')}")
     except Exception:
         return ""
 

@@ -1,10 +1,18 @@
-import csv
 import json
 from pathlib import Path
 
 import docx
 import pandas as pd
 from pypdf import PdfReader
+
+
+def table_text(df: pd.DataFrame, sheet_name: str) -> str:
+    lines = []
+    for number, row in enumerate(df.itertuples(index=False, name=None), 1):
+        fields = "; ".join(f"{column}: {value}" for column, value in zip(df.columns, row) if pd.notna(value))
+        if fields:
+            lines.append(f"Sheet {sheet_name}, row {number}: {fields}")
+    return "\n".join(lines)
 
 def load_file(file_path: str) -> str:
     suffix = Path(file_path).suffix.lower()
@@ -30,19 +38,14 @@ def load_file(file_path: str) -> str:
         return "\n".join(paragraphs + table_rows)
 
     elif suffix == ".csv":
-        rows = []
-        with open(file_path, newline="", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                rows.append(" | ".join(row))
-        return "\n".join(rows)
+        return table_text(pd.read_csv(file_path), "data")
 
     elif suffix in {".xlsx", ".xls"}:
         sheets = pd.read_excel(file_path, sheet_name=None)
         parts = []
         for sheet_name, df in sheets.items():
             parts.append(f"Sheet: {sheet_name}")
-            parts.append(df.to_csv(index=False))
+            parts.append(table_text(df, sheet_name))
         return "\n".join(parts)
 
     elif suffix == ".json":

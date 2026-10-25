@@ -99,7 +99,7 @@ with right:
                 st.write(data.get("answer", "No answer returned."))
 
                 metric_cols = st.columns(3)
-                metric_cols[0].metric("Confidence", data.get("confidence", 0))
+                metric_cols[0].metric("Retrieval time", f"{data.get('retrieval_ms', 0):.0f} ms")
                 metric_cols[1].metric("Chunks used", len(data.get("retrieved_chunks", [])))
                 metric_cols[2].metric("Web used", "Yes" if data.get("web_used") else "No")
 

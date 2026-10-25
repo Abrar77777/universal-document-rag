@@ -31,10 +31,11 @@ if (-not (Test-Path $VenvPython)) {
 }
 
 Write-Host "Checking dependencies..."
-$DependencyCheck = & $VenvPython -c "import importlib.util; missing=[p for p in ['fastapi','streamlit','pandas','faiss','openai'] if importlib.util.find_spec(p) is None]; print('missing:' + ','.join(missing) if missing else 'ok')" 2>$null
+$DependencyCheck = & $VenvPython -c "import importlib.util as u; missing=[p for p in ['fastapi','streamlit','pandas','faiss','openai','google.genai','vaderSentiment','xlrd','sklearn'] if (p == 'google.genai' and u.find_spec('google') is None) or u.find_spec(p) is None]; print('missing:' + ','.join(missing) if missing else 'ok')" 2>$null
 if ($LASTEXITCODE -ne 0 -or $DependencyCheck -notcontains "ok") {
     Write-Host "Installing dependencies. This can take a few minutes the first time..."
-    & $VenvPython -m pip install -r requirements.txt.txt
+    & $VenvPython -m pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed." }
 }
 
 Write-Host "Starting presentation demo..."

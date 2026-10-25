@@ -1,6 +1,6 @@
 def split_text(text: str, chunk_size: int = 900, overlap: int = 150):
-    if overlap >= chunk_size:
-        raise ValueError("overlap must be smaller than chunk_size")
+    if chunk_size <= 0 or overlap < 0 or overlap >= chunk_size:
+        raise ValueError("chunk_size must be positive and 0 <= overlap < chunk_size")
 
     chunks = []
     start = 0
@@ -20,6 +20,6 @@ def split_text(text: str, chunk_size: int = 900, overlap: int = 150):
         else:
             next_start = max(end - overlap, 0)
             space = text.find(" ", next_start, min(text_length, next_start + overlap + 80))
-            start = space + 1 if space != -1 else next_start
+            start = max(start + 1, min(end, space + 1 if space != -1 else next_start))
 
     return chunks

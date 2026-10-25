@@ -8,9 +8,11 @@ from sklearn.preprocessing import normalize
 
 
 class EmbeddingBackend:
-    def __init__(self, backend: str | None = None):
+    def __init__(self, backend: str | None = None, model_name: str | None = None):
         self.backend = backend or os.getenv("RAG_EMBEDDING_BACKEND", "hashing")
-        self.model_name = os.getenv("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        self.model_name = model_name or os.getenv("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        if self.backend not in {"hashing", "sentence-transformers"}:
+            raise ValueError("Unsupported embedding backend.")
         self._sentence_model = None
         self._hashing_model = HashingVectorizer(
             n_features=384,

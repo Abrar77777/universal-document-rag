@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import numpy as np
 
 
 def _safe_float(value: Any):
@@ -38,7 +39,8 @@ def analyze_tabular_file(file_path: str) -> dict[str, Any]:
     summary_lines = []
 
     for sheet_name, df in tables.items():
-        cleaned = df.dropna(how="all")
+        cleaned = df.dropna(how="all").replace([np.inf, -np.inf], np.nan)
+        cleaned.columns = cleaned.columns.map(str)
         numeric_cols = cleaned.select_dtypes(include="number").columns.tolist()
         categorical_cols = cleaned.select_dtypes(exclude="number").columns.tolist()
         date_cols = [
@@ -50,6 +52,7 @@ def analyze_tabular_file(file_path: str) -> dict[str, Any]:
             "name": sheet_name,
             "rows": int(cleaned.shape[0]),
             "columns": int(cleaned.shape[1]),
+            "duplicate_rows": int(cleaned.duplicated().sum()),
             "numeric_columns": numeric_cols,
             "categorical_columns": categorical_cols,
             "missing_values": {str(k): int(v) for k, v in cleaned.isna().sum().items()},
@@ -66,6 +69,8 @@ def analyze_tabular_file(file_path: str) -> dict[str, Any]:
         for col in numeric_cols:
             series = cleaned[col].dropna()
             sheet_profile["numeric_summary"][col] = {
+                "count": int(series.count()),
+                "sum": _safe_float(series.sum()) if not series.empty else None,
                 "min": _safe_float(series.min()),
                 "max": _safe_float(series.max()),
                 "mean": _safe_float(series.mean()),
@@ -93,9 +98,9 @@ def analyze_tabular_file(file_path: str) -> dict[str, Any]:
 
         if len(numeric_cols) >= 2:
             corr = cleaned[numeric_cols].corr(numeric_only=True).round(4)
-            for left in corr.columns:
-                for right in corr.columns:
-                    if left != right:
+            for position, left in enumerate(corr.columns):
+                for right in corr.columns[position + 1:]:
+                    if pd.notna(corr.loc[left, right]):
                         sheet_profile["correlations"].append({
                             "x": left,
                             "y": right,
@@ -108,8 +113,9 @@ def analyze_tabular_file(file_path: str) -> dict[str, Any]:
             )[:20]
             sheet_profile["correlations"] = strongest
 
-        if numeric_cols:
-            first_num = numeric_cols[0]
+        nonempty_numeric = [col for col in numeric_cols if cleaned[col].notna().any()]
+        if nonempty_numeric:
+            first_num = nonempty_numeric[0]
             hist = cleaned[first_num].dropna()
             hist_df = (
                 pd.cut(hist, bins=min(10, max(1, hist.nunique())))

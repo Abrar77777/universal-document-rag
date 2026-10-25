@@ -1,5 +1,6 @@
 import os
 import pickle
+from pathlib import Path
 
 import faiss
 
@@ -10,7 +11,7 @@ from utils.text_cleaner import clean_text
 from utils.text_splitter import split_text
 
 
-def build_index(file_path: str, index_name: str, source_name: str | None = None):
+def build_index(file_path: str, index_name: str, source_name: str | None = None, index_root: str | None = None):
     raw_text = load_file(file_path)
     cleaned = clean_text(raw_text)
     chunks = split_text(cleaned)
@@ -24,7 +25,9 @@ def build_index(file_path: str, index_name: str, source_name: str | None = None)
     index = faiss.IndexFlatIP(dim)
     index.add(embeddings)
 
-    index_dir = f"data/indices/{index_name}"
+    root = Path(index_root) if index_root else Path(__file__).resolve().parents[1] / "data" / "indices"
+    index_dir = str(root / index_name)
+    analytics = analyze_tabular_file(file_path)
     os.makedirs(index_dir, exist_ok=True)
 
     faiss.write_index(index, f"{index_dir}/index.faiss")
@@ -37,6 +40,7 @@ def build_index(file_path: str, index_name: str, source_name: str | None = None)
             "text": chunk,
             "char_length": len(chunk),
             "embedding_backend": model.backend,
+            "embedding_model": model.model_name,
         }
         for i, chunk in enumerate(chunks)
     ]
@@ -44,7 +48,6 @@ def build_index(file_path: str, index_name: str, source_name: str | None = None)
     with open(f"{index_dir}/chunks.pkl", "wb") as f:
         pickle.dump(metadata, f)
 
-    analytics = analyze_tabular_file(file_path)
     if analytics:
         analytics["file"] = display_source
         with open(f"{index_dir}/analytics.pkl", "wb") as f:

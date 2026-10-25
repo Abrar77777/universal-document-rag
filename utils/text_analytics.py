@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 from collections import Counter
 from typing import Any
+from functools import lru_cache
+
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 
 STOPWORDS = {
@@ -56,29 +59,31 @@ def _tokens(text: str) -> list[str]:
     ]
 
 
-def _score_sentence(sentence: str) -> tuple[str, int]:
-    words = set(_tokens(sentence))
-    positive = len(words & POSITIVE_WORDS)
-    negative = len(words & NEGATIVE_WORDS)
-    score = positive - negative
-    if score > 0:
+@lru_cache(maxsize=1)
+def _sentiment_model():
+    return SentimentIntensityAnalyzer()
+
+
+def _score_sentence(sentence: str) -> tuple[str, float]:
+    score = _sentiment_model().polarity_scores(sentence)["compound"]
+    if score >= 0.05:
         return "positive", score
-    if score < 0:
+    if score <= -0.05:
         return "negative", score
     return "neutral", score
 
 
-def analyze_feedback_text(text: str, source: str = "uploaded text") -> dict[str, Any]:
-    sentences = _sentences(text)
-    tokens = _tokens(text)
+def analyze_feedback_text(text: str, source: str = "uploaded text", responses: list[str] | None = None) -> dict[str, Any]:
+    sentences = [str(item).strip() for item in responses if str(item).strip()] if responses is not None else _sentences(text)
+    tokens = _tokens(" ".join(sentences))
     keyword_counts = Counter(tokens)
 
     sentiment_counts = Counter()
     scored_sentences = []
-    for sentence in sentences:
+    for row, sentence in enumerate(sentences, 1):
         label, score = _score_sentence(sentence)
         sentiment_counts[label] += 1
-        scored_sentences.append({"text": sentence, "sentiment": label, "score": score})
+        scored_sentences.append({"response": row, "text": sentence, "sentiment": label, "score": score})
 
     theme_counts = Counter()
     for token in tokens:
@@ -108,6 +113,9 @@ def analyze_feedback_text(text: str, source: str = "uploaded text") -> dict[str,
     )
 
     return {
+        "method": "VADER (English, rule-based)",
+        "unit": "rows" if responses is not None else "sentences",
+        "scored_responses": scored_sentences,
         "source": source,
         "responses": len(sentences),
         "words": len(tokens),

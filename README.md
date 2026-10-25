@@ -1,7 +1,11 @@
 # Universal Document Intelligence System
+Recruiter overview and codebase review: [APP_HIGHLIGHTS.md](APP_HIGHLIGHTS.md).
+
+The primary app is now a four-tab workspace: **Ask & evidence**, **Data explorer**, **Feedback intelligence**, and **Retrieval lab**. It starts empty and uses only your uploads. Charts support selectable axes/aggregations, feedback analysis uses a chosen response column, and answers persist across control changes.
+
 To watch this in action visit--->https://universal-document-rag-ur2fwvaw7zguvmtysadtvq.streamlit.app/
 
-An end-to-end AI system that lets users upload documents and ask natural-language questions with answers grounded in document content. The app supports multi-document RAG, Groq-powered answer generation, source citations, confidence scoring, chat memory, optional web search, and numeric analysis for CSV/Excel files.
+An end-to-end AI system for user-uploaded documents, source-backed questions, and interactive data analysis. It supports hybrid retrieval, Gemini/Groq answer generation, source-labeled passages, scoped conversation history, optional web evidence, and numeric analysis for CSV/Excel files. Evidence counts and timings are shown instead of a purported confidence probability.
 
 This is built as a portfolio-ready project with a FastAPI backend, Streamlit frontend, FAISS retrieval, evaluation metrics, a Windows demo launcher, and a GitHub Pages presentation site.
 
@@ -9,14 +13,14 @@ This is built as a portfolio-ready project with a FastAPI backend, Streamlit fro
 
 - Upload and index PDF, DOCX, TXT, Markdown, CSV, Excel, and JSON files.
 - Smart chunking with overlap and sentence-aware boundaries.
-- Multi-document FAISS retrieval with top-k control and similarity scores.
+- Multi-document FAISS + TF-IDF retrieval with reciprocal rank fusion, top-k control, and inspectable ranks.
 - Conversational RAG API using Groq-compatible OpenAI chat completions.
-- Local fallback answer mode when `GROQ_API_KEY` is not configured.
+- Clearly labeled extractive evidence when generation is disabled or unavailable.
 - Optional internet search fallback using DuckDuckGo.
 - Numeric profiling for CSV and Excel: rows, columns, missing values, summary statistics, and chart suggestions.
 - Customer feedback analytics: sentiment distribution, keyword extraction, themes, emotion signals, pain points, and praise.
 - Exploratory data analysis for spreadsheets: missing values, category distributions, correlations, outliers, histograms, bar charts, line charts, and scatter plots.
-- Streamlit frontend for upload, question answering, citations, confidence, and charts.
+- Streamlit workspace for persistent answers, evidence, interactive charts, feedback filtering, and exports.
 - Evaluation script for precision@k, recall@k, MRR, and grounding proxy.
 - No paid vector database or proprietary storage required.
 
@@ -35,9 +39,9 @@ FAISS vector index
         |
 Top-k retrieval
         |
-Groq LLM prompt with retrieved context
+Gemini / Groq prompt with source-labeled context
         |
-Answer + citations + confidence
+Answer + evidence ledger + timings
 ```
 
 For CSV and Excel files, the tabular analyzer also creates numeric summaries and chart-ready data for the frontend.
@@ -46,9 +50,10 @@ For CSV and Excel files, the tabular analyzer also creates numeric summaries and
 
 | Layer | Technology |
 | --- | --- |
-| LLM | Groq, `llama-3.1-8b-instant` |
+| LLM | Configurable Gemini, then Groq when configured |
 | Embeddings | Local hashing backend by default, optional SentenceTransformers |
-| Vector DB | FAISS |
+| Retrieval | FAISS + scikit-learn TF-IDF + reciprocal rank fusion |
+| Feedback | VADER sentiment, row-level results, keyword themes |
 | Backend | FastAPI |
 | Frontend | Streamlit |
 | Web Search | DuckDuckGo Search |
@@ -73,7 +78,7 @@ data/             Raw files, uploads, and generated indices
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
-pip install -r requirements.txt.txt
+pip install -r requirements.txt
 ```
 
 Add your Groq key to `.env`:
@@ -87,8 +92,8 @@ Without a key, or if the key is invalid, the app still retrieves relevant chunks
 Embeddings use a local hashing backend by default so the demo works without downloading a model. To use Sentence Transformers instead:
 
 ```powershell
-set RAG_EMBEDDING_BACKEND=sentence-transformers
-set RAG_EMBEDDING_MODEL=all-MiniLM-L6-v2
+$env:RAG_EMBEDDING_BACKEND="sentence-transformers"
+$env:RAG_EMBEDDING_MODEL="all-MiniLM-L6-v2"
 ```
 
 ## Run
@@ -121,7 +126,7 @@ Manual run:
 
 ```powershell
 uvicorn api.main:app --reload
-streamlit run ui/app.py
+streamlit run streamlit_app.py
 ```
 
 ## API
@@ -158,16 +163,17 @@ Create a JSON dataset like:
 Run:
 
 ```powershell
-python evaluation/evaluate_rag.py --dataset evaluation/sample_eval_dataset.json --index-dir data/indices/<index_id> --top-k 5
+python -m evaluation.evaluate_rag --dataset evaluation/sample_eval_dataset.json --index-dir data/indices/<index_id> --top-k 5 --retrieval-only
 ```
 
-The output includes precision@k, recall@k, MRR, and a grounding proxy that estimates how much of the answer is supported by retrieved text.
+The output includes precision@k, source recall@k, and MRR. Remove `--retrieval-only` to call configured providers and compute lexical overlap for generated answers. This grounding proxy does not establish factual correctness. Set expected source names to your real files before evaluation.
 
 ## Advanced RAG Techniques Included
 
-- Top-k dense retrieval over document chunks.
+- Top-k vector retrieval (hashing by default; optional semantic embeddings).
+- TF-IDF keyword retrieval fused with vector ranks.
 - Multi-document retrieval with per-chunk metadata and citations.
-- Similarity-based confidence scoring.
+- Inspectable ranking signals and observed latency, not calibrated confidence.
 - Conversation memory per session.
 - Numeric-aware prompting for tabular files.
 - Optional web-search fallback.
@@ -198,7 +204,7 @@ GEMINI_API_KEY = "your_gemini_key_here"
 GEMINI_MODEL = "gemini-3.8-flash"
 ```
 
-The cloud app uses `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The local demo still supports the FastAPI + Streamlit split through `run_app.ps1`.
+The cloud app and Windows launcher use `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The launcher also starts FastAPI for API inspection. `ui/app.py` remains a legacy API-client example.
 
 After saving secrets, reboot the Streamlit app. If you explicitly set `GEMINI_MODEL`, make sure it matches the current supported model shown above.
 
@@ -215,4 +221,12 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 - Show how citations reduce hallucination risk.
 - Demonstrate CSV/Excel upload and visual numeric profiling.
 - Run evaluation metrics before and after changing top-k or chunk size.
-- Discuss future upgrades: hybrid BM25+dense retrieval, reranking, query rewriting, user auth, async indexing, and a managed vector database.
+- Discuss remaining upgrades: BM25/cross-encoder comparisons, query rewriting, authentication, async ingestion, retention cleanup, and durable storage.
+
+## Automated Checks
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Tests use isolated local fixtures and mocked providers. Live cloud credentials and quotas require separate deployment checks. See [APP_HIGHLIGHTS.md](APP_HIGHLIGHTS.md) for the architecture review, privacy considerations, known limitations, and recruiter walkthrough.
