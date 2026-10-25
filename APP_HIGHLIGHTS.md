@@ -18,7 +18,8 @@ The app starts empty and uses only user uploads. There are no canned answers or 
 | Feedback intelligence | VADER scores each selected response row; searchable sentiment results | Select the actual feedback column, filter negative replies, export scored rows |
 | Data quality | Missing cells, duplicates, summary statistics, correlation pairs, IQR outliers | Explain a data-quality problem before interpreting a chart |
 | Measurable retrieval | Precision@k, source recall@k, MRR; Vector vs Hybrid comparison | Label expected sources, run a comparison, download the results |
-| Failure handling | Gemini then Groq when configured; explicit extractive fallback | Explain how the system behaves if a provider is unavailable |
+| Failure handling | Low-latency Gemini default; Groq is opt-in; safe timeout/quota categories | Explain how the system behaves if a provider is unavailable |
+| Direct table questions | Whole-column pandas min/max with matching row evidence | Ask which item costs more and inspect the actual source row |
 | Usable outputs | Persistent answers, Markdown evidence report, grouped CSV, feedback CSV, evaluation JSON | Download an analysis that another person can inspect |
 
 ## Architecture
@@ -63,6 +64,8 @@ The primary entrypoint is `streamlit_app.py`. Both Streamlit Cloud and the Windo
 ### Numbers Are Computed, Not Invented
 
 Pandas calculates summaries and grouped chart data over the selected sheet. The LLM receives numeric profiles, including counts and sums, and is instructed not to invent whole-dataset totals from retrieved row fragments. The chart builder is deterministic: it does not execute model-generated Python or SQL.
+
+Simple, unfiltered extrema questions also have a local pandas path: for example, "which item costs more" maps to a uniquely identified price/cost column and returns the matching item rows. It accounts for missing values and ties. Ambiguous columns/sheets ask for clarification; filters, groupings, and other unsupported wording are not silently converted to a global maximum. This is a bounded query capability, not a general natural-language-to-SQL engine.
 
 Charts support bar, line, scatter, and distributions. Scatter plots use a reproducible 2,000-row sample when necessary; category charts display the top 30 groups. The data preview is capped at 500 rows. These display limits are disclosed in the UI; grouped calculations use the full sheet.
 
@@ -122,6 +125,7 @@ Replace the sample dataset's source names with your own uploaded filenames befor
 - Pickled indexes/profiles are generated internally. Never load untrusted external pickle files.
 - External answer generation sends selected passages and numeric profiles to the configured provider. Optional web search sends the question to a third-party service. Use approved data only.
 - Model availability, quotas, and credentials can still cause provider failures. No cloud generation success is claimed solely from local tests.
+- Gemini defaults to `gemini-3.5-flash-lite`, verified as free-tier-capable on 2026-10-25. The allowlist does not control billing: the key must belong to a Free tier project to avoid paid API usage. Google AI Pro subscription benefits do not cover direct API requests. Other-provider fallback is off by default.
 - Package versions are not fully locked. A production release needs a pinned, tested environment and deployment monitoring.
 - Prompt instructions reduce injection risk but are not a complete security boundary.
 

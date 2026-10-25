@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def configure_secrets():
     for key in ("GEMINI_API_KEY", "GEMINI_MODEL", "GROQ_API_KEY", "GROQ_MODEL",
-                "RAG_EMBEDDING_BACKEND", "RAG_EMBEDDING_MODEL"):
+                "RAG_EMBEDDING_BACKEND", "RAG_EMBEDDING_MODEL", "RAG_ALLOW_GROQ_FALLBACK"):
         try:
             value = st.secrets.get(key)
         except (FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
@@ -53,6 +53,11 @@ def csv_bytes(frame):
 
 
 def render_evidence(answer):
+    for table in answer.get("table_evidence", []):
+        with st.expander(f"[{table['citation_id']}] {table['source']} / {table['sheet']} - source rows", expanded=True):
+            rows = [{"Data row": row["data_row"], **{f"Column: {key}": value for key, value in row["values"].items()}} for row in table["rows"]]
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.caption(f"{table['operation']}({table['metric']}) | {table['valid_values']} finite values | {table['ties']} matching rows")
     chunks = answer.get("retrieved_chunks", [])
     if not chunks:
         return
@@ -82,6 +87,8 @@ def render_ask(documents, top_k, mode, use_web, evidence_only):
                         question.strip(), st.session_state.session_id, use_web, top_k,
                         [document["profile"] for document in documents if document["profile"]],
                         retrieval_mode=mode, generate=not evidence_only,
+                        tabular_sources=[{"source": document["name"], "sheet": name, "data": frame}
+                                         for document in documents for name, frame in document["tables"].items()],
                     )
                 st.session_state.answers.append({"question": question.strip(), "result": answer})
                 st.session_state.answers = st.session_state.answers[-10:]
@@ -97,13 +104,24 @@ def render_ask(documents, top_k, mode, use_web, evidence_only):
     result = entry["result"]
     st.markdown(result["answer"])
     c1, c2, c3 = st.columns(3)
-    c1.metric("Evidence passages", result["evidence_count"])
-    c2.metric("Retrieval", f"{result['retrieval_ms']:,.0f} ms")
+    calculated = result["generation_status"] in {"computed", "clarification"}
+    c1.metric("Source rows" if calculated else "Evidence passages", result["evidence_count"])
+    c2.metric("Calculation" if calculated else "Retrieval", f"{result['retrieval_ms']:,.0f} ms")
     c3.metric("Total time", f"{result['total_ms'] / 1000:.2f} s")
-    st.caption(f"{result['generation_status'].title()} | {result['retrieval_mode'].title()} retrieval | "
-               f"Web evidence: {'yes' if result['web_used'] else 'no'}")
+    if calculated:
+        st.caption("Local table analysis | No AI-provider request")
+    else:
+        st.caption(f"{result['generation_status'].title()} | {result['retrieval_mode'].title()} retrieval | "
+                   f"Web evidence: {'yes' if result['web_used'] else 'no'}")
     if result.get("llm_error"):
-        st.warning("AI analysis is temporarily unavailable. This response contains source excerpts only.")
+        status = {
+            "timeout": "The AI service did not respond in time.",
+            "rate_limit": "The AI service's current request allowance has been reached.",
+            "access_denied": "The AI service rejected access for this deployment.",
+            "model_unavailable": "The configured AI model is unavailable.",
+            "empty_response": "The AI service returned no answer.",
+        }.get(result.get("generation_issue"), "AI analysis is temporarily unavailable.")
+        st.warning(status + " This response contains source excerpts only.")
     render_evidence(result)
     st.download_button("Download answer report", answer_report(entry["question"], result),
                        file_name="document_report.md", mime="text/markdown", icon=":material/download:")

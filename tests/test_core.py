@@ -63,7 +63,7 @@ class CoreTests(unittest.TestCase):
 
     def test_gemini_failure_tries_groq(self):
         pipeline = RAGPipeline([self.index("policy.txt", "Refunds take thirty days.")])
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-placeholder", "GROQ_API_KEY": "test-placeholder"}), \
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-placeholder", "GROQ_API_KEY": "test-placeholder", "RAG_ALLOW_GROQ_FALLBACK": "true"}), \
              patch.object(pipeline, "_generate_with_gemini", side_effect=RuntimeError("secret-not-for-output")), \
              patch.object(pipeline, "_generate_with_groq", return_value="1. Thirty days. [S1]"):
             result = pipeline.answer("Refunds?", "test", False)
@@ -82,7 +82,7 @@ class CoreTests(unittest.TestCase):
 
     def test_citations_are_sent_in_prompt(self):
         pipeline = RAGPipeline([self.index("policy.txt", "Refunds take thirty days.")])
-        with patch.dict(os.environ, {"GROQ_API_KEY": "test-placeholder"}), \
+        with patch.dict(os.environ, {"GROQ_API_KEY": "test-placeholder", "RAG_ALLOW_GROQ_FALLBACK": "true"}), \
              patch.object(pipeline, "_generate_with_groq", return_value="Thirty days. [S1]") as generator:
             pipeline.answer("Refunds?", "test", False)
         messages = generator.call_args.args[0]
@@ -172,6 +172,12 @@ class WorkspaceUITests(unittest.TestCase):
                 next(button for button in app_test.button if button.label == "Analyze feedback").click().run()
                 self.assertFalse(app_test.exception)
                 self.assertEqual(app_test.session_state["feedback_result"][1]["responses"], 2)
+                next(area for area in app_test.text_area if area.label == "Question").set_value("What is the highest revenue?")
+                next(button for button in app_test.button if button.label == "Ask").click().run()
+                self.assertFalse(app_test.exception)
+                result = app_test.session_state["answers"][-1]["result"]
+                self.assertEqual(result["generation_status"], "computed")
+                self.assertEqual(result["table_evidence"][0]["result"], 20.0)
                 next(button for button in app_test.button if button.label == "Clear workspace").click().run()
                 self.assertFalse(app_test.exception)
                 self.assertEqual(app_test.session_state["documents"], {})

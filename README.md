@@ -201,18 +201,22 @@ Add this secret in Streamlit Cloud:
 
 ```toml
 GEMINI_API_KEY = "your_gemini_key_here"
-GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+RAG_ALLOW_GROQ_FALLBACK = false
 ```
 
 The cloud app and Windows launcher use `streamlit_app.py`, which runs the RAG pipeline directly inside Streamlit. The launcher also starts FastAPI for API inspection. `ui/app.py` remains a legacy API-client example.
 
 After saving secrets, reboot the Streamlit app. If you explicitly set `GEMINI_MODEL`, make sure it matches the current supported model shown above.
 
-You can also keep Groq as an optional fallback:
+The default is Gemini 3.5 Flash-Lite, a low-latency model with a free API tier as of 2026-10-25. Only the approved Flash-Lite models are selectable; other configured names are replaced with the default. This is a model-selection policy, **not a billing guarantee**. Keep the API key's project on the Free tier with no paid API billing. Google AI Pro subscriptions do not cover direct API usage. Free-tier quotas and data-use terms still apply. See [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite) and [subscription/API distinction](https://ai.google.dev/gemini-api/docs/google-ai-plans).
+
+Groq fallback is disabled by default. Only enable it after reviewing that provider's account billing and limits:
 
 ```toml
 GROQ_API_KEY = "your_groq_key_here"
 GROQ_MODEL = "llama-3.1-8b-instant"
+RAG_ALLOW_GROQ_FALLBACK = true
 ```
 
 ## Portfolio Talking Points

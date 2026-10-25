@@ -9,6 +9,7 @@ router = APIRouter()
 
 SESSION_INDEXES = {}
 SESSION_ANALYTICS = {}
+SESSION_TABLES = {}
 UPLOAD_DIR = Path("data/uploads")
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ def upload_file(file: UploadFile = File(...), session_id: str = Query(..., min_l
     try:
         from embeddings.build_index_from_file import build_index
         from utils.workspace import SUPPORTED, MAX_UPLOAD_BYTES
+        from utils.tabular_analyzer import _read_tables
 
         if not session_id.strip():
             raise HTTPException(422, "Session ID must not be blank.")
@@ -39,6 +41,8 @@ def upload_file(file: UploadFile = File(...), session_id: str = Query(..., min_l
         index_dir = build_index(str(file_path), file_id, source_name=safe_name)
 
         SESSION_INDEXES.setdefault(session_id, []).append(index_dir)
+        for name, frame in _read_tables(str(file_path)).items():
+            SESSION_TABLES.setdefault(session_id, []).append({"source": safe_name, "sheet": name, "data": frame})
 
         analytics_path = Path(index_dir) / "analytics.pkl"
         analytics = None
@@ -72,6 +76,7 @@ def ask_question(request: QueryRequest):
             analytics_profiles=SESSION_ANALYTICS.get(request.session_id, []),
             retrieval_mode=request.retrieval_mode,
             generate=request.generate,
+            tabular_sources=SESSION_TABLES.get(request.session_id, []),
         )
 
         return result

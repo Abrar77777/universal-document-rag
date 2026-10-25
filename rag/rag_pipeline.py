@@ -9,6 +9,8 @@ from openai import OpenAI
 
 from rag.retriever import Retriever
 from rag.web_search import web_search
+from rag.provider_config import allow_groq_fallback, failure_category, gemini_model
+from rag.tabular_qa import answer_table_question
 
 load_dotenv()
 
@@ -73,26 +75,30 @@ class RAGPipeline:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options=types.HttpOptions(timeout=30000))
-        model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-        response = client.models.generate_content(
-            model=model,
-            contents=self._messages_to_prompt([message for message in messages if message["role"] != "system"]),
-            config=types.GenerateContentConfig(
-                temperature=0.25,
-                max_output_tokens=2048,
-                system_instruction=messages[0]["content"],
-            ),
+        client = genai.Client(
+            api_key=os.getenv("GEMINI_API_KEY"),
+            http_options=types.HttpOptions(timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)),
         )
-        client.close()
+        try:
+            response = client.models.generate_content(
+                model=gemini_model(),
+                contents=self._messages_to_prompt([message for message in messages if message["role"] != "system"]),
+                config=types.GenerateContentConfig(
+                    temperature=0.25,
+                    max_output_tokens=1536,
+                    system_instruction=messages[0]["content"],
+                ),
+            )
+        finally:
+            client.close()
         return response.text or ""
 
     def _generate_with_groq(self, messages: list[dict[str, str]]) -> str:
         client = OpenAI(
             api_key=os.getenv("GROQ_API_KEY"),
             base_url="https://api.groq.com/openai/v1",
-            timeout=30,
-            max_retries=1,
+            timeout=20,
+            max_retries=0,
         )
         response = client.chat.completions.create(
             model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
@@ -111,10 +117,25 @@ class RAGPipeline:
         analytics_profiles: list[dict[str, Any]] | None = None,
         retrieval_mode: str = "hybrid",
         generate: bool = True,
+        tabular_sources: list[dict[str, Any]] | None = None,
     ):
         if not question.strip() or len(question) > 4000:
             raise ValueError("Question must contain between 1 and 4000 characters.")
         started = perf_counter()
+        if not 1 <= top_k <= 20 or retrieval_mode not in {"vector", "hybrid"}:
+            raise ValueError("Invalid retrieval settings.")
+        computed = answer_table_question(question, tabular_sources or [])
+        if computed:
+            elapsed = round((perf_counter() - started) * 1000, 1)
+            table_evidence = computed["table_evidence"]
+            return {
+                **computed, "citations": [f"[T1] {item['source']} / {item['sheet']}" for item in table_evidence],
+                "retrieved_chunks": [], "web_used": False, "retrieval_mode": "table",
+                "retrieval_ms": elapsed, "total_ms": elapsed,
+                "evidence_count": sum(len(item["rows"]) for item in table_evidence),
+                "llm_error": False, "llm_provider": "local calculation", "generation_issue": None,
+                "chart_specs": [],
+            }
         retrieved = self.retriever.search(question, top_k=top_k, mode=retrieval_mode)
         retrieval_ms = round((perf_counter() - started) * 1000, 1)
         for number, chunk in enumerate(retrieved, 1):
@@ -170,12 +191,13 @@ QUESTION:
         ]
 
         llm_error = False
+        generation_issue = None
         provider = "retrieved sources"
         answer = ""
         providers = []
         if generate and (doc_context or analytics_context or web_context) and os.getenv("GEMINI_API_KEY"):
             providers.append(("gemini", self._generate_with_gemini))
-        if generate and (doc_context or analytics_context or web_context) and os.getenv("GROQ_API_KEY"):
+        if generate and (doc_context or analytics_context or web_context) and allow_groq_fallback() and os.getenv("GROQ_API_KEY"):
             providers.append(("groq", self._generate_with_groq))
 
         for provider_name, generator in providers:
@@ -183,10 +205,13 @@ QUESTION:
                 answer = generator(messages).strip()
                 if answer.strip():
                     provider = provider_name
+                    generation_issue = None
                     break
+                generation_issue = "empty_response"
                 logger.warning("The %s provider returned an empty response.", provider_name)
             except Exception as exc:
-                logger.warning("The %s provider failed (%s).", provider_name, type(exc).__name__)
+                generation_issue, status = failure_category(exc)
+                logger.warning("Provider failure: provider=%s category=%s status=%s", provider_name, generation_issue, status)
 
         if not answer.strip() and providers:
             llm_error = True
@@ -212,6 +237,7 @@ QUESTION:
             "evidence_count": len(retrieved),
             "generation_status": "generated" if provider != "retrieved sources" else "extractive",
             "llm_error": llm_error,
+            "generation_issue": generation_issue,
             "llm_provider": provider,
             "chart_specs": [
                 chart

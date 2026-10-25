@@ -73,4 +73,9 @@ def answer_report(question: str, answer: dict) -> str:
     for chunk in answer.get("retrieved_chunks", []):
         lines.extend([f"### [{chunk.get('citation_id', '')}] {chunk['source']} / chunk {chunk['chunk_id'] + 1}",
                       chunk["text"], ""])
+    for table in answer.get("table_evidence", []):
+        lines.append(f"### [{table['citation_id']}] {table['source']} / {table['sheet']}")
+        lines.append(f"Calculation: {table['operation']}({table['metric']}); {table['valid_values']} finite values compared.")
+        for row in table["rows"]:
+            lines.append(f"Data row {row['data_row']}: " + "; ".join(f"{key}: {value}" for key, value in row["values"].items()))
     return "\n\n".join(lines)
